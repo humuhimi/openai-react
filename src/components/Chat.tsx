@@ -1,14 +1,29 @@
 // src/components/Chat.tsx
 import React, { useEffect, useState } from "react";
-import { TextField, Button, Container, Grid, LinearProgress, CircularProgress } from "@mui/material";
+import {
+  TextField,
+  Button,
+  Container,
+  Grid,
+  LinearProgress,
+  CircularProgress,
+} from "@mui/material";
 import Message from "./Message";
 import OpenAI from "openai";
 import { MessageDto } from "../models/MessageDto";
 import SendIcon from "@mui/icons-material/Send";
 
+type Question = {
+  question_text: string;
+  question_type: string;
+  choices?: string[];
+};
+
 const Chat: React.FC = () => {
   const [isWaiting, setIsWaiting] = useState<boolean>(false);
-  const [messages, setMessages] = useState<Array<MessageDto>>(new Array<MessageDto>());
+  const [messages, setMessages] = useState<Array<MessageDto>>(
+    new Array<MessageDto>()
+  );
   const [input, setInput] = useState<string>("");
   const [assistant, setAssistant] = useState<any>(null);
   const [thread, setThread] = useState<any>(null);
@@ -27,20 +42,44 @@ const Chat: React.FC = () => {
     ]);
   }, [assistant]);
 
+  // example function
+  const displayQuiz = (title: string, questions: Question[]): string[] => {
+    console.log("Quiz:", title);
+    console.log();
+    const responses: string[] = [];
+
+    questions.forEach((q) => {
+      console.log(q.question_text);
+      let response = "";
+
+      if (q.question_type === "MULTIPLE_CHOICE") {
+        q.choices?.forEach((choice, i) => {
+          console.log(`${i}. ${choice}`);
+        });
+        // get_mock_response_from_user_multiple_choice
+        response = "a";
+      } else if (q.question_type === "FREE_RESPONSE") {
+        // get_mock_response_from_user_free_response
+        response = "I don't know.";
+      }
+
+      responses.push(response);
+      console.log();
+    });
+
+    return responses;
+  };
+
   const initChatBot = async () => {
     const openai = new OpenAI({
       apiKey: process.env.REACT_APP_OPENAI_API_KEY,
       dangerouslyAllowBrowser: true,
     });
 
-    // Create an assistant
-    const assistant = await openai.beta.assistants.create({
-      name: "Hockey Expert",
-      instructions: "You are a hockey expert. You specialize in helping others learn about hockey.",
-      tools: [{ type: "code_interpreter" }],
-      model: "gpt-4-1106-preview",
-    });
-
+    // Retrieve an assistant
+    const assistant = await openai.beta.assistants.retrieve(
+      process.env.REACT_APP_OPENAI_ASSISTANT_ID
+    );
     // Create a thread
     const thread = await openai.beta.threads.create();
 
@@ -75,10 +114,33 @@ const Chat: React.FC = () => {
 
     // Wait for the response to be ready
     while (response.status === "in_progress" || response.status === "queued") {
+      console.log(response.status);
       console.log("waiting...");
       setIsWaiting(true);
       await new Promise((resolve) => setTimeout(resolve, 5000));
       response = await openai.beta.threads.runs.retrieve(thread.id, run.id);
+    }
+    console.log(response.status);
+    if (response.status === "requires_action") {
+      let toolCall = response.required_action.submit_tool_outputs.tool_calls[0];
+      // let name = toolCall.function.name;
+      let args = JSON.parse(toolCall.function.arguments);
+      let functionResponse = displayQuiz(args["title"], args["questions"]);
+      console.dir(response);
+
+      const functionalRun = await openai.beta.threads.runs.submitToolOutputs(
+        thread.id,
+        response.id,
+        {
+          tool_outputs: [
+            {
+              tool_call_id: toolCall.id,
+              output: JSON.stringify(functionResponse),
+            },
+          ],
+        }
+      );
+      console.log(JSON.parse(functionalRun));
     }
 
     setIsWaiting(false);
@@ -88,13 +150,19 @@ const Chat: React.FC = () => {
 
     // Find the last message for the current run
     const lastMessage = messageList.data
-      .filter((message: any) => message.run_id === run.id && message.role === "assistant")
+      .filter(
+        (message: any) =>
+          message.run_id === run.id && message.role === "assistant"
+      )
       .pop();
 
     // Print the last message coming from the assistant
     if (lastMessage) {
       console.log(lastMessage.content[0]["text"].value);
-      setMessages([...messages, createNewMessage(lastMessage.content[0]["text"].value, false)]);
+      setMessages([
+        ...messages,
+        createNewMessage(lastMessage.content[0]["text"].value, false),
+      ]);
     }
   };
 
@@ -109,12 +177,21 @@ const Chat: React.FC = () => {
     <Container>
       <Grid container direction="column" spacing={2} paddingBottom={2}>
         {messages.map((message, index) => (
-          <Grid item alignSelf={message.isUser ? "flex-end" : "flex-start"} key={index}>
+          <Grid
+            item
+            alignSelf={message.isUser ? "flex-end" : "flex-start"}
+            key={"grid-" + index}
+          >
             <Message key={index} message={message} />
           </Grid>
         ))}
       </Grid>
-      <Grid container direction="row" paddingBottom={5} justifyContent={"space-between"}>
+      <Grid
+        container
+        direction="row"
+        paddingBottom={5}
+        justifyContent={"space-between"}
+      >
         <Grid item sm={11} xs={9}>
           <TextField
             label="Type your message"
@@ -128,7 +205,13 @@ const Chat: React.FC = () => {
           {isWaiting && <LinearProgress color="inherit" />}
         </Grid>
         <Grid item sm={1} xs={3}>
-          <Button variant="contained" size="large" color="primary" onClick={handleSendMessage} disabled={isWaiting}>
+          <Button
+            variant="contained"
+            size="large"
+            color="primary"
+            onClick={handleSendMessage}
+            disabled={isWaiting}
+          >
             {isWaiting && <CircularProgress color="inherit" />}
             {!isWaiting && <SendIcon fontSize="large" />}
           </Button>
