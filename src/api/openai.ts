@@ -1,7 +1,12 @@
 import { OpenAI } from "openai";
 import { MessageDto } from "../models/MessageDto";
 import { Run } from "openai/src/resources/beta/threads/runs/runs";
-import { ActionCallbacksType } from "../types";
+import {
+  ActionCallbackType,
+  QuizArgs,
+  visitorRequestArgs,
+  ToolOutputResponse,
+} from "../types";
 
 const openai = new OpenAI({
   apiKey: process.env.REACT_APP_OPENAI_API_KEY,
@@ -92,7 +97,7 @@ export const retrieveRun = async (threadId, runId) => {
 export const waitOnRun = async (
   threadId,
   run: Run,
-  actionCallbacks: ActionCallbacksType[]
+  actionCallbacks: ActionCallbackType<QuizArgs | visitorRequestArgs>[]
 ) => {
   try {
     while (
@@ -102,7 +107,6 @@ export const waitOnRun = async (
     ) {
       console.log("waiting...");
       console.log(run.status);
-      await new Promise((resolve) => setTimeout(resolve, 5000));
       if (run.status === "requires_action") {
         let functionName =
           run.required_action.submit_tool_outputs.tool_calls[0].function.name;
@@ -110,9 +114,10 @@ export const waitOnRun = async (
           (actionCallback) => actionCallback.name === functionName
         );
 
-        run = await execRunACtion(threadId, run, actionCallback);
+        run = await execRunAction(threadId, run, actionCallback);
       }
-      run = await openai.beta.threads.runs.retrieve(threadId, run.id);
+      await new Promise((resolve) => setTimeout(resolve, 5000));
+      run = await retrieveRun(threadId, run.id);
     }
   } catch (error) {
     console.error("Error in waitOnRun:", error);
@@ -121,10 +126,10 @@ export const waitOnRun = async (
   return run;
 };
 
-const execRunACtion = async (
+export const execRunAction = async (
   threadId,
   run: Run,
-  actionCallback: ActionCallbacksType
+  actionCallback: ActionCallbackType<QuizArgs | visitorRequestArgs>
 ): Promise<Run> => {
   try {
     let toolCall = run.required_action.submit_tool_outputs.tool_calls[0];
@@ -135,24 +140,32 @@ const execRunACtion = async (
     console.log(args);
 
     let functionResponse = actionCallback(args);
-
-    const functionalRun = await openai.beta.threads.runs.submitToolOutputs(
-      threadId,
-      run.id,
-      {
-        tool_outputs: [
-          {
-            tool_call_id: toolCall.id,
-            output: JSON.stringify(functionResponse),
-          },
-        ],
-      }
-    );
-    console.log(functionalRun);
-    return functionalRun;
+    const toolOutputs = {
+      tool_outputs: [
+        {
+          tool_call_id: toolCall.id,
+          output: JSON.stringify(functionResponse),
+        },
+      ],
+    };
+    return submitToolOutputs(threadId, run.id, toolOutputs);
   } catch (error) {
     console.error("エラーが発生しました:", error);
     // ここにエラー処理のロジックを追加する
     throw error; // エラーを再投げるか、適切なエラー処理を行う
   }
+};
+
+export const submitToolOutputs = async (
+  threadId,
+  runId,
+  toolOutputs: ToolOutputResponse
+): Promise<Run> => {
+  const functionalRun = await openai.beta.threads.runs.submitToolOutputs(
+    threadId,
+    runId,
+    toolOutputs
+  );
+  console.log(functionalRun);
+  return functionalRun;
 };

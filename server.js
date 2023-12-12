@@ -18,12 +18,11 @@ const client = new twilio(
 
 app.post("/send-sms", async (req, res) => {
   console.dir(req);
-  const { subject, message } = req.body;
-  console.log(subject);
+  const { email, purpose } = req.body;
 
   try {
     const sms = await client.messages.create({
-      body: `Subject: ${subject}\nMessage: ${message}`, // 件名とメッセージ本文を組み合わせ
+      body: `Email: ${email}\nPurpose: ${purpose}`, // 件名とメッセージ本文を組み合わせ
       from: process.env.REACT_APP_TWILIO_PHONE_NUMBER_FROM, // Twilioから購入した電話番号
       to: process.env.REACT_APP_TWILIO_PHONE_NUMBER_TO, // SMSを受信する電話番号
     });
