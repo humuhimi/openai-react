@@ -1,7 +1,7 @@
 import { OpenAI } from "openai";
 import { MessageDto } from "../models/MessageDto";
-import { displayQuiz, sendSMS } from "./functions";
 import { Run } from "openai/src/resources/beta/threads/runs/runs";
+import { ActionCallbacksType } from "../types";
 
 const openai = new OpenAI({
   apiKey: process.env.REACT_APP_OPENAI_API_KEY,
@@ -89,7 +89,11 @@ export const retrieveRun = async (threadId, runId) => {
   }
 };
 
-export const waitOnRun = async (threadId, run: Run) => {
+export const waitOnRun = async (
+  threadId,
+  run: Run,
+  actionCallbacks: ActionCallbacksType[]
+) => {
   try {
     while (
       run.status === "in_progress" ||
@@ -100,12 +104,13 @@ export const waitOnRun = async (threadId, run: Run) => {
       console.log(run.status);
       await new Promise((resolve) => setTimeout(resolve, 5000));
       if (run.status === "requires_action") {
-        try {
-          run = await execRunACtion(threadId, run);
-        } catch (error) {
-          console.error("Error in execRunAction:", error);
-          throw error;
-        }
+        let functionName =
+          run.required_action.submit_tool_outputs.tool_calls[0].function.name;
+        let actionCallback = actionCallbacks.find(
+          (actionCallback) => actionCallback.name === functionName
+        );
+
+        run = await execRunACtion(threadId, run, actionCallback);
       }
       run = await openai.beta.threads.runs.retrieve(threadId, run.id);
     }
@@ -116,7 +121,11 @@ export const waitOnRun = async (threadId, run: Run) => {
   return run;
 };
 
-const execRunACtion = async (threadId, run: Run): Promise<Run> => {
+const execRunACtion = async (
+  threadId,
+  run: Run,
+  actionCallback: ActionCallbacksType
+): Promise<Run> => {
   try {
     let toolCall = run.required_action.submit_tool_outputs.tool_calls[0];
     console.log(toolCall);
@@ -125,8 +134,7 @@ const execRunACtion = async (threadId, run: Run): Promise<Run> => {
     console.log("args");
     console.log(args);
 
-    let functionResponse = displayQuiz(args["title"], args["questions"]);
-    sendSMS("アクションが実行された！！！", args["title"]);
+    let functionResponse = actionCallback(args);
 
     const functionalRun = await openai.beta.threads.runs.submitToolOutputs(
       threadId,

@@ -21,6 +21,8 @@ import {
   waitOnRun,
 } from "../api/openai";
 import { MessageDto } from "../models/MessageDto";
+import { displayQuiz, sendVisitorRequest } from "../api/functions";
+import { ActionCallbacksType } from "../types/index";
 
 const Chat: React.FC = () => {
   const [isWaiting, setIsWaiting] = useState<boolean>(false);
@@ -30,6 +32,7 @@ const Chat: React.FC = () => {
   const [input, setInput] = useState<string>("");
   const [assistant, setAssistant] = useState<any>(null);
   const [thread, setThread] = useState<any>(null);
+  const [functions, setFunctions] = useState<ActionCallbacksType[]>();
 
   useEffect(() => {
     initChatBot();
@@ -52,11 +55,12 @@ const Chat: React.FC = () => {
     const thread = await createThread();
     setAssistant(assistant);
     setThread(thread);
+    setFunctions([displayQuiz, sendVisitorRequest]);
   };
 
   const execRun = async (threadId, run) => {
     setIsWaiting(true);
-    const response = await waitOnRun(threadId, run);
+    const response = await waitOnRun(threadId, run, functions);
     setIsWaiting(false);
     return response;
   };

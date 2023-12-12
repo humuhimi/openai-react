@@ -1,6 +1,8 @@
-import { Question } from "../types";
+import { QuizArgs, visitorRequestArgs } from "../types";
 
-export function displayQuiz(title: string, questions: Question[]): string[] {
+export function displayQuiz(args: QuizArgs): string[] {
+  const title = args["title"];
+  const questions = args["questions"];
   console.log("Quiz:", title);
   console.log();
   const responses: string[] = ["Quiz:" + title, ""];
@@ -64,3 +66,28 @@ export const sendSMS = async (subject, message) => {
     alert("SMS送信中にエラーが発生しました。");
   }
 };
+
+export const sendVisitorRequest = (args: visitorRequestArgs): string[] => {
+  const visitorEmail = args["visitorEmail"];
+  const vistorPurpose = args["vistorPurpose"];
+  try {
+    fetch("/send-visitor-request", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ visitorEmail, vistorPurpose }),
+    });
+  } catch (error) {
+    console.error("エラーが発生しました:", error);
+    alert("SMS送信中にエラーが発生しました。");
+  }
+  return [];
+};
+
+/**
+ * 1.特定のキーワードがユーザーから打たれる 仕事を依頼したいとか
+ * 2.そのワードを受け取ってsendVisitorRequestを実行する
+ * 3.実行したら特定のメッセージを受け取るよう待機する
+ * 4.ユーザーからのメッセージを受け取り次第　その内容を送るメソッドを実行
+ */
